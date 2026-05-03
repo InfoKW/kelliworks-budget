@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { PlaidLink } from 'react-plaid-link'
+import type { Profile } from '@/types'
 
 export default function SettingsPage() {
   const [profile, setProfile] = useState<Profile | null>(null)
@@ -102,5 +103,4 @@ export default function SettingsPage() {
       </div>
     </div>
   )
-}
 }
