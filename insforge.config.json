@@ -1,0 +1,27 @@
+{
+  "name": "kelliworks-client-portal",
+  "framework": "nextjs",
+  "buildCommand": "npm run build",
+  "outputDirectory": ".next",
+  "installCommand": "npm install",
+  "envVars": [
+    "NEXT_PUBLIC_SUPABASE_URL",
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+    "SUPABASE_SERVICE_ROLE_KEY",
+    "PLAID_CLIENT_ID",
+    "PLAID_SECRET",
+    "PLAID_ENV",
+    "STRIPE_SECRET_KEY",
+    "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+    "STRIPE_WEBHOOK_SECRET",
+    "NEXT_PUBLIC_APP_URL",
+    "CRON_SECRET",
+    "ANTHROPIC_API_KEY"
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/daily-sync",
+      "schedule": "0 6 * * *"
+    }
+  ]
+}

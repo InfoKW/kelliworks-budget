@@ -1,0 +1,47 @@
+import { redirect } from 'next/navigation'
+import { createClient } from '@/lib/supabase/server'
+import ClientNav from '@/components/ui/ClientNav'
+import KellyAIBubble from '@/components/ai/KellyAIBubble'
+
+export default async function ClientLayout({ children }: { children: React.ReactNode }) {
+  const insforge = await createClient()
+  const { data: { user } } = await insforge.auth.getCurrentUser()
+
+  if (!user) redirect('/login')
+
+  let { data: profile, error: profileError } = await insforge.database
+    .from('profiles')
+    .select('*')
+    .eq('id', user.id)
+    .single()
+
+  if (!profile) {
+    // Attempt to create profile if missing
+    const { data: newProfile, error: createError } = await insforge.database
+      .from('profiles')
+      .insert({
+        id: user.id,
+        email: user.email,
+        full_name: user.metadata?.full_name || user.metadata?.name || ''
+      })
+      .select()
+      .single()
+
+    if (createError) {
+      throw createError
+    }
+    profile = newProfile
+  }
+
+  return (
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--c-bg)', position: 'relative' }}>
+      <ClientNav profile={profile} />
+      <main style={{ flex: 1, position: 'relative', zIndex: 1, padding: '32px 0' }}>
+        <div className="container-page">
+          {children}
+        </div>
+      </main>
+      <KellyAIBubble />
+    </div>
+  )
+}
