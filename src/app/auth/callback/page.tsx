@@ -30,13 +30,24 @@ export default function AuthCallbackPage() {
       while (Date.now() < deadline) {
         const { data: { user } } = await insforge.auth.getCurrentUser()
         if (user) {
-          // Use type assertion to access the internal tokenManager
           const session = (insforge as any).tokenManager?.getSession()
           if (session?.accessToken) {
-            // Set a manual cookie so the Middleware can see the session immediately
             document.cookie = `insforge_access_token=${session.accessToken}; path=/; max-age=3600; SameSite=Lax`
           }
-          router.replace('/dashboard')
+
+          // Only allow users who were pre-added by an admin
+          const { data: profile } = await insforge.database
+            .from('profiles').select('role').eq('id', user.id).single()
+
+          if (!profile) {
+            await insforge.auth.signOut()
+            document.cookie = 'insforge_access_token=; path=/; max-age=0; SameSite=Lax'
+            router.replace('/login?error=not_registered')
+            return
+          }
+
+          const dest = profile.role === 'admin' ? '/admin' : '/dashboard'
+          router.replace(dest)
           return
         }
         await new Promise(r => setTimeout(r, interval))

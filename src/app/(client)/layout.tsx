@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import ClientNav from '@/components/ui/ClientNav'
-import KellyAIBubble from '@/components/ai/KellyAIBubble'
+// import KellyAIBubble from '@/components/ai/KellyAIBubble'
 
 export default async function ClientLayout({ children }: { children: React.ReactNode }) {
   const insforge = await createClient()
@@ -9,28 +9,13 @@ export default async function ClientLayout({ children }: { children: React.React
 
   if (!user) redirect('/login')
 
-  let { data: profile, error: profileError } = await insforge.database
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .single()
+  const { data: profile } = await insforge.database
+    .from('profiles').select('*').eq('id', user.id).single()
 
   if (!profile) {
-    // Attempt to create profile if missing
-    const { data: newProfile, error: createError } = await insforge.database
-      .from('profiles')
-      .insert({
-        id: user.id,
-        email: user.email,
-        full_name: user.metadata?.full_name || user.metadata?.name || ''
-      })
-      .select()
-      .single()
-
-    if (createError) {
-      throw createError
-    }
-    profile = newProfile
+    // User was not pre-added by an admin — deny access
+    await insforge.auth.signOut()
+    redirect('/login?error=not_registered')
   }
 
   return (
@@ -41,7 +26,7 @@ export default async function ClientLayout({ children }: { children: React.React
           {children}
         </div>
       </main>
-      <KellyAIBubble />
+      {/* <KellyAIBubble /> */}
     </div>
   )
 }

@@ -204,6 +204,12 @@ input, button, textarea, select {
   color: var(--c-navy-950);
 }
 
+.btn-sm {
+  padding: 8px 16px;
+  font-size: 13px;
+  gap: 6px;
+}
+
 /* ═══════════════════════════════════════════════════════════
    INPUT SYSTEM
    ═══════════════════════════════════════════════════════════ */

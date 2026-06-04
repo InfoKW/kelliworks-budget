@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { formatCurrency, getMonthLabel, getCurrentMonth } from '@/lib/utils'
 import MonthSelector from '@/components/dashboard/MonthSelector'
+import PlaidConnectBanner from '@/components/ui/PlaidConnectBanner'
 import BudgetProgress from '@/components/dashboard/BudgetProgress'
 import BudgetLineItem from '@/components/dashboard/BudgetLineItem'
 import UnmatchedExpenses from '@/components/dashboard/UnmatchedExpenses'
@@ -39,6 +40,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
 
   const { data: redAlerts }    = await insforge.database.from('alerts').select('id').eq('user_id', user.id).eq('severity', 'red').eq('status', 'pending')
   const { data: yellowAlerts } = await insforge.database.from('alerts').select('id').eq('user_id', user.id).eq('severity', 'yellow').eq('status', 'pending')
+  const { data: plaidItems }   = await insforge.database.from('plaid_items').select('id, institution_name').eq('user_id', user.id).limit(1)
 
   const redCount    = (redAlerts ?? []).length
   const yellowCount = (yellowAlerts ?? []).length
@@ -68,6 +70,9 @@ export default async function DashboardPage({ searchParams }: PageProps) {
         </div>
         <MonthSelector currentMonth={month} />
       </div>
+
+      {/* ── Plaid connect banner ────────────────── */}
+      <PlaidConnectBanner />
 
       {/* ── Alert banner ────────────────────────── */}
       {(redCount > 0 || yellowCount > 0) && (
@@ -105,11 +110,44 @@ export default async function DashboardPage({ searchParams }: PageProps) {
 
           <div className="glass-card" style={{ padding: 24 }}>
             <p className="section-label" style={{ marginBottom: 16 }}>Quick Insight</p>
+
+            {/* Connection status */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+              {/* Budget */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 13, color: 'var(--c-slate-600)', fontWeight: 500 }}>Budget</span>
+                {budget ? (
+                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--c-green-600)', background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '2px 10px', borderRadius: 99 }}>
+                    Connected
+                  </span>
+                ) : (
+                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--c-slate-400)', background: 'var(--c-slate-100)', border: '1px solid var(--c-slate-200)', padding: '2px 10px', borderRadius: 99 }}>
+                    Not uploaded
+                  </span>
+                )}
+              </div>
+              {/* Plaid */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 13, color: 'var(--c-slate-600)', fontWeight: 500 }}>Bank (Plaid)</span>
+                {(plaidItems ?? []).length > 0 ? (
+                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--c-green-600)', background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '2px 10px', borderRadius: 99 }}>
+                    {(plaidItems![0] as any).institution_name ?? 'Connected'}
+                  </span>
+                ) : (
+                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--c-amber-600)', background: '#fffbeb', border: '1px solid #fde68a', padding: '2px 10px', borderRadius: 99 }}>
+                    Not connected
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div style={{ height: 1, background: 'var(--c-slate-100)', marginBottom: 14 }} />
+
             <p style={{ fontSize: 13, color: 'var(--c-slate-600)', lineHeight: 1.65 }}>
-              You&apos;re currently tracking {budgetLines?.length || 0} budget lines.{' '}
+              Tracking {budgetLines?.length || 0} budget lines.{' '}
               {pct > 90
                 ? <span style={{ color: 'var(--c-red-500)', fontWeight: 600 }}>You&apos;re close to your limit!</span>
-                : <span style={{ color: 'var(--c-green-500)', fontWeight: 600 }}>You&apos;re well within your budget.</span>}
+                : <span style={{ color: 'var(--c-green-500)', fontWeight: 600 }}>Well within budget.</span>}
             </p>
           </div>
         </div>

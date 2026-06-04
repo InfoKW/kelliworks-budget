@@ -1,5 +1,14 @@
-import KellyAIChat from '@/components/ai/KellyAIChat'
+// import KellyAIChat from '@/components/ai/KellyAIChat'
 
+export default function KellyAIPage() {
+  return (
+    <div style={{ maxWidth: 760, margin: '0 auto' }}>
+      <p style={{ fontSize: 14, color: 'var(--c-slate-400)' }}>Coming soon.</p>
+    </div>
+  )
+}
+
+/* Hidden — Kelly AI
 export default function KellyAIPage() {
   return (
     <div style={{ maxWidth: 760, margin: '0 auto' }}>
@@ -19,3 +28,4 @@ export default function KellyAIPage() {
     </div>
   )
 }
+*/

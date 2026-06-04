@@ -21,7 +21,9 @@ export function formatDate(date: string): string {
 }
 
 export function getMonthLabel(month: string): string {
-  return new Date(month + '-02').toLocaleDateString('en-US', {
+  // Accept both YYYY-MM and YYYY-MM-DD — take only the first 7 chars
+  const base = month.substring(0, 7)
+  return new Date(base + '-02').toLocaleDateString('en-US', {
     month: 'long',
     year: 'numeric',
   })

@@ -1,5 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { formatCurrency, formatDate } from '@/lib/utils'
+import { Card, Badge, SectionLabel } from '@/components/ui'
+import { AlertTriangle, AlertCircle } from 'lucide-react'
 
 export default async function AdminAlertsPage() {
   const supabase = await createClient()
@@ -12,47 +14,70 @@ export default async function AdminAlertsPage() {
     .order('created_at', { ascending: false })
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-2xl font-bold text-white" style={{ fontFamily: 'Playfair Display, serif' }}>
-        All Pending Alerts
-      </h2>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+
+      <div>
+        <SectionLabel style={{ marginBottom: 10 }}>Admin · Alerts</SectionLabel>
+        <h1 style={{ fontSize: 32, color: 'var(--c-navy-950)' }}>Pending Alerts</h1>
+        <p style={{ fontSize: 14, color: 'var(--c-slate-500)', marginTop: 6 }}>
+          {(alerts ?? []).length} alert{(alerts ?? []).length !== 1 ? 's' : ''} awaiting review
+        </p>
+      </div>
 
       {(alerts ?? []).length === 0 ? (
-        <div className="rounded-xl border border-slate-700 p-12 text-center text-slate-500" style={{ background: 'var(--slate-800)' }}>
-          No pending alerts.
-        </div>
+        <Card padding="56px 32px" style={{ textAlign: 'center' }}>
+          <p style={{ fontSize: 24, marginBottom: 8 }}>✓</p>
+          <p style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-navy-950)', marginBottom: 4 }}>All clear</p>
+          <p style={{ fontSize: 13, color: 'var(--c-slate-400)' }}>No pending alerts across all clients.</p>
+        </Card>
       ) : (
-        <div className="rounded-xl border border-slate-700 overflow-hidden" style={{ background: 'var(--slate-800)' }}>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-700 text-slate-400 text-left">
-                <th className="px-5 py-4 font-medium">Severity</th>
-                <th className="px-5 py-4 font-medium">Client</th>
-                <th className="px-5 py-4 font-medium">Alert</th>
-                <th className="px-5 py-4 font-medium">Amount</th>
-                <th className="px-5 py-4 font-medium">Date</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(alerts ?? []).map((alert: { id: string; severity: string; title: string; amount: number | null; created_at: string; profiles?: { full_name: string | null; email: string } | null }, i: number) => (
-                <tr key={alert.id} className={`${i > 0 ? 'border-t border-slate-700' : ''}`}>
-                  <td className="px-5 py-4">
-                    <span className={`text-xs font-bold uppercase px-2 py-1 rounded-full border ${
-                      alert.severity === 'red'
-                        ? 'text-red-400 bg-red-950 border-red-800'
-                        : 'text-amber-400 bg-amber-950 border-amber-800'
-                    }`}>{alert.severity}</span>
-                  </td>
-                  <td className="px-5 py-4 text-white">
-                    {alert.profiles?.full_name ?? alert.profiles?.email ?? '—'}
-                  </td>
-                  <td className="px-5 py-4 text-white">{alert.title}</td>
-                  <td className="px-5 py-4 text-white">{alert.amount ? formatCurrency(alert.amount) : '—'}</td>
-                  <td className="px-5 py-4 text-slate-400">{formatDate(alert.created_at)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {(alerts ?? []).map((alert: {
+            id: string; severity: string; title: string; description: string | null
+            amount: number | null; created_at: string
+            profiles?: { full_name: string | null; email: string } | null
+          }) => {
+            const isRed = alert.severity === 'red'
+            const clientName = alert.profiles?.full_name ?? alert.profiles?.email ?? 'Unknown'
+            return (
+              <Card key={alert.id} padding="20px 24px" style={{
+                borderColor: isRed ? 'rgba(239,68,68,0.2)' : 'rgba(245,158,11,0.2)',
+                background: isRed ? 'rgba(239,68,68,0.03)' : 'rgba(245,158,11,0.03)',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
+                  {/* Icon */}
+                  <div style={{
+                    width: 38, height: 38, borderRadius: 10, flexShrink: 0,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: isRed ? 'rgba(239,68,68,0.1)' : 'rgba(245,158,11,0.1)',
+                    border: `1px solid ${isRed ? 'rgba(239,68,68,0.2)' : 'rgba(245,158,11,0.2)'}`,
+                  }}>
+                    {isRed
+                      ? <AlertCircle size={17} color="var(--c-red-500)" />
+                      : <AlertTriangle size={17} color="var(--c-amber-500)" />}
+                  </div>
+
+                  {/* Content */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 4 }}>
+                      <Badge variant={isRed ? 'red' : 'gold'}>{alert.severity}</Badge>
+                      <span style={{ fontSize: 12, color: 'var(--c-slate-500)' }}>{clientName}</span>
+                      <span style={{ fontSize: 12, color: 'var(--c-slate-400)', marginLeft: 'auto' }}>{formatDate(alert.created_at)}</span>
+                    </div>
+                    <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--c-navy-950)', marginBottom: alert.description ? 4 : 0 }}>{alert.title}</p>
+                    {alert.description && <p style={{ fontSize: 13, color: 'var(--c-slate-500)', lineHeight: 1.5 }}>{alert.description}</p>}
+                  </div>
+
+                  {/* Amount */}
+                  {alert.amount && (
+                    <p style={{ fontSize: 15, fontWeight: 800, color: 'var(--c-navy-950)', flexShrink: 0 }}>
+                      {formatCurrency(alert.amount)}
+                    </p>
+                  )}
+                </div>
+              </Card>
+            )
+          })}
         </div>
       )}
     </div>

@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { formatCurrency, formatDate } from '@/lib/utils'
+import PlaidConnectBanner from '@/components/ui/PlaidConnectBanner'
 
 export default async function TransactionsPage() {
   const insforge = await createClient()
@@ -22,6 +23,8 @@ export default async function TransactionsPage() {
           Showing the last {Math.min((transactions ?? []).length, 200)} transactions.
         </p>
       </div>
+
+      <PlaidConnectBanner />
 
       <div className="glass-card" style={{ borderRadius: 16, overflow: 'hidden' }}>
         {/* Table header */}

@@ -3,21 +3,28 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { PlaidLink } from 'react-plaid-link'
-import { Link2, ShieldCheck, Zap, ArrowRight, Building2, ShoppingBag, Globe, Lock, Plus } from 'lucide-react'
+import { Link2, ShieldCheck, Zap, ArrowRight, Building2, ShoppingBag, Globe, Lock, Plus, RefreshCw } from 'lucide-react'
 import { motion } from 'framer-motion'
 
 export default function ConnectorsPage() {
   const [linkToken, setLinkToken] = useState<string | null>(null)
   const [plaidItems, setPlaidItems] = useState<{ id: string; institution_name: string | null; last_synced_at: string | null }[]>([])
   const [loading, setLoading] = useState(true)
+  const [linkError, setLinkError] = useState<string | null>(null)
+  const [syncing, setSyncing] = useState(false)
+  const [syncResult, setSyncResult] = useState<string | null>(null)
 
   useEffect(() => {
     async function init() {
       try {
         const res = await fetch('/api/plaid/create-link-token', { method: 'POST' })
         const data = await res.json()
-        setLinkToken(data.link_token)
-        
+        if (!res.ok || !data.link_token) {
+          setLinkError(data.error ?? 'Could not initialise Plaid. Check your API credentials.')
+        } else {
+          setLinkToken(data.link_token)
+        }
+
         const insforge = createClient()
         const { data: { user } } = await insforge.auth.getCurrentUser()
         if (user) {
@@ -25,14 +32,33 @@ export default function ConnectorsPage() {
             .from('plaid_items').select('id, institution_name, last_synced_at').eq('user_id', user.id)
           setPlaidItems(items ?? [])
         }
-      } catch (err) {
-        console.error('Failed to initialize Plaid:', err)
+      } catch (err: any) {
+        setLinkError(err?.message ?? 'Could not reach Plaid. Check your API credentials.')
       } finally {
         setLoading(false)
       }
     }
     init()
   }, [])
+
+  async function handleSync() {
+    setSyncing(true)
+    setSyncResult(null)
+    try {
+      const res = await fetch('/api/plaid/sync-transactions', { method: 'POST' })
+      const json = await res.json()
+      if (res.ok) {
+        setSyncResult(`${json.synced} transaction${json.synced !== 1 ? 's' : ''} synced`)
+      } else {
+        setSyncResult(json.error ?? 'Sync failed')
+      }
+    } catch {
+      setSyncResult('Sync failed')
+    } finally {
+      setSyncing(false)
+      setTimeout(() => setSyncResult(null), 5000)
+    }
+  }
 
   async function onPlaidSuccess(publicToken: string, metadata: { institution: { name: string } | null }) {
     await fetch('/api/plaid/exchange-token', {
@@ -64,18 +90,45 @@ export default function ConnectorsPage() {
             }}>
               <Building2 />
             </div>
-            {linkToken ? (
-              <PlaidLink
-                token={linkToken}
-                onSuccess={onPlaidSuccess}
-                className="btn btn-gold btn-sm"
-              >
-                <Plus size={14} style={{ marginRight: 6 }} />
-                Connect Bank
-              </PlaidLink>
-            ) : (
-              <div className="badge badge-neutral">Loading...</div>
-            )}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              {plaidItems.length > 0 && (
+                <button
+                  onClick={handleSync}
+                  disabled={syncing}
+                  className="btn btn-outline btn-sm"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, opacity: syncing ? 0.6 : 1 }}
+                >
+                  <RefreshCw size={13} style={{ animation: syncing ? 'spin 0.8s linear infinite' : 'none' }} />
+                  {syncResult ?? (syncing ? 'Syncing…' : 'Sync')}
+                </button>
+              )}
+              {linkToken ? (
+                <PlaidLink
+                  token={linkToken}
+                  onSuccess={onPlaidSuccess}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    padding: '8px 16px', borderRadius: 12,
+                    background: '#b8860b', color: 'white', border: 'none',
+                    fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                    fontFamily: 'inherit', whiteSpace: 'nowrap',
+                    boxShadow: '0 4px 12px rgba(184,134,11,0.25)',
+                  }}
+                >
+                  <Plus size={14} />
+                  Connect Bank
+                </PlaidLink>
+              ) : linkError ? (
+                <span style={{ fontSize: 11, color: 'var(--c-red-500)', fontWeight: 600, maxWidth: 160, textAlign: 'right', lineHeight: 1.4 }}>
+                  {linkError}
+                </span>
+              ) : (
+                <button className="btn btn-outline btn-sm" disabled style={{ cursor: 'not-allowed', opacity: 0.45 }}>
+                  <Plus size={14} />
+                  Connect Bank
+                </button>
+              )}
+            </div>
           </div>
           <h3 style={{ fontSize: 18, color: 'var(--c-navy-950)', marginBottom: 4 }}>Bank Connection</h3>
           <p style={{ fontSize: 13, color: 'var(--c-slate-500)', marginBottom: 16 }}>Powered by Plaid</p>

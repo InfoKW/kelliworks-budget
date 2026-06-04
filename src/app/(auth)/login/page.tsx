@@ -1,12 +1,14 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { ShaderAnimation } from '@/components/ui/shader-animation'
+import { Button, Card, Divider, Input } from '@/components/ui'
 
 export default function LoginPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -14,38 +16,59 @@ export default function LoginPage() {
   const [googleLoading, setGoogleLoading] = useState(false)
   const redirecting = useRef(false)
 
+  // Show error from URL param (e.g. after OAuth redirect)
   useEffect(() => {
-    if (redirecting.current) return
+    if (searchParams.get('error') === 'not_registered') {
+      setError('This account has not been set up. Please contact your KelliWorks advisor to get access.')
+    }
+  }, [searchParams])
 
+  // Redirect already-logged-in users (run once on mount only)
+  useEffect(() => {
     async function checkUser() {
       const insforge = createClient()
       const { data: { user } } = await insforge.auth.getCurrentUser()
       if (user && !redirecting.current) {
         redirecting.current = true
-        // Sync cookie if found on client
-        const session = (insforge as any).tokenManager?.getSession()
-        if (session?.accessToken) {
-          document.cookie = `insforge_access_token=${session.accessToken}; path=/; max-age=3600; SameSite=Lax`
-        }
-        router.replace('/dashboard')
+        const { data: profile } = await insforge.database
+          .from('profiles').select('role').eq('id', user.id).single()
+        const dest = profile?.role === 'admin' ? '/admin' : '/dashboard'
+        router.replace(dest)
       }
     }
     checkUser()
-  }, [router])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
     setLoading(true)
+
     const insforge = createClient()
-    const { error } = await insforge.auth.signInWithPassword({ email, password })
-    if (error) {
-      setError(error.message)
+    const { error: signInError } = await insforge.auth.signInWithPassword({ email, password })
+
+    if (signInError) {
+      setError(signInError.message)
       setLoading(false)
       return
     }
-    router.push('/dashboard')
-    router.refresh()
+
+    const { data: { user } } = await insforge.auth.getCurrentUser()
+    const { data: profile } = await insforge.database
+      .from('profiles').select('role').eq('id', user!.id).single()
+
+    // Block anyone not pre-added by an admin
+    if (!profile) {
+      await insforge.auth.signOut()
+      setError('This account has not been set up. Please contact your KelliWorks advisor to get access.')
+      setLoading(false)
+      return
+    }
+
+    redirecting.current = true
+    const dest = profile.role === 'admin' ? '/admin' : '/dashboard'
+    router.push(dest)
   }
 
   async function handleGoogleLogin() {
@@ -58,18 +81,16 @@ export default function LoginPage() {
       setError(error.message)
       setGoogleLoading(false)
     }
-    // On success the SDK auto-redirects the browser to Google — nothing else needed
   }
+
+  const busy = loading || googleLoading
 
   return (
     <div style={{
       minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
       padding: '32px 16px', position: 'relative', overflow: 'hidden', background: '#000',
     }}>
-      {/* Shader background */}
       <ShaderAnimation />
-
-      {/* Dark overlay so the card stays readable */}
       <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.35)', pointerEvents: 'none', zIndex: 1 }} />
 
       <div className="anim-fade-up" style={{ width: '100%', maxWidth: 420, position: 'relative', zIndex: 2 }}>
@@ -84,32 +105,24 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {/* Card */}
-        <div className="glass-card" style={{ borderRadius: 24, padding: '36px 32px', position: 'relative', overflow: 'hidden', boxShadow: 'var(--shadow-premium)' }}>
-          {/* Top accent line */}
-          <div style={{
-            position: 'absolute', top: 0, left: 0, right: 0, height: 3,
-            background: 'linear-gradient(90deg, transparent, var(--c-gold-400), transparent)',
-            borderRadius: '24px 24px 0 0',
-          }} />
+        <Card accent padding="32px 32px 36px" style={{ boxShadow: 'var(--shadow-premium)' }}>
 
-          <h1 style={{ fontFamily: 'var(--font-sans)', fontSize: 20, fontWeight: 700, color: 'var(--c-navy-950)', textAlign: 'center', marginBottom: 28 }}>
+          {/* Heading */}
+          <h1 style={{ fontFamily: 'var(--font-sans)', fontSize: 19, fontWeight: 700, color: 'var(--c-navy-950)', textAlign: 'center', marginBottom: 24 }}>
             Sign in to your account
           </h1>
 
-          {/* ── Google OAuth ──────────────────────────── */}
+          {/* Google OAuth */}
           <button
             type="button"
-            id="google-login-btn"
             onClick={handleGoogleLogin}
-            disabled={googleLoading || loading}
+            disabled={busy}
             style={{
               width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-              padding: '13px 20px', borderRadius: 12, marginBottom: 24, cursor: 'pointer',
+              padding: '13px 20px', borderRadius: 12, marginBottom: 24, cursor: busy ? 'not-allowed' : 'pointer',
               background: '#ffffff', border: '1px solid var(--c-slate-300)',
               color: 'var(--c-slate-800)', fontSize: 15, fontWeight: 600, transition: 'all 0.2s ease',
-              opacity: (googleLoading || loading) ? 0.6 : 1,
-              boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+              opacity: busy ? 0.6 : 1, boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
             }}
           >
             {googleLoading ? (
@@ -125,25 +138,20 @@ export default function LoginPage() {
             {googleLoading ? 'Redirecting to Google…' : 'Continue with Google'}
           </button>
 
-          {/* ── Divider ──────────────────────────────── */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 }}>
-            <div style={{ flex: 1, height: 1, background: 'var(--c-slate-200)' }} />
-            <span style={{ fontSize: 12, color: 'var(--c-slate-500)', fontWeight: 500 }}>or sign in with email</span>
-            <div style={{ flex: 1, height: 1, background: 'var(--c-slate-200)' }} />
-          </div>
+          <Divider label="or sign in with email" style={{ marginBottom: 24 }} />
 
-          {/* ── Email / password form ─────────────────── */}
+          {/* Email / password form */}
           <form onSubmit={handleLogin} noValidate style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <label htmlFor="email" style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-slate-700)' }}>
-                Email address
-              </label>
-              <input
-                id="email" type="email" autoComplete="email"
-                value={email} onChange={e => setEmail(e.target.value)}
-                required placeholder="you@example.com" className="input"
-              />
-            </div>
+            <Input
+              id="email"
+              type="email"
+              label="Email address"
+              autoComplete="email"
+              value={email}
+              onChange={e => { setEmail(e.target.value); setError(null) }}
+              required
+              placeholder="you@example.com"
+            />
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -155,9 +163,14 @@ export default function LoginPage() {
                 </a>
               </div>
               <input
-                id="password" type="password" autoComplete="current-password"
-                value={password} onChange={e => setPassword(e.target.value)}
-                required placeholder="••••••••" className="input"
+                id="password"
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={e => { setPassword(e.target.value); setError(null) }}
+                required
+                placeholder="••••••••"
+                className="input"
               />
             </div>
 
@@ -173,22 +186,18 @@ export default function LoginPage() {
               </div>
             )}
 
-            <button
+            <Button
               type="submit"
-              id="email-login-btn"
-              disabled={loading || googleLoading}
-              className="btn btn-gold"
-              style={{ marginTop: 4, width: '100%', padding: '14px 24px', fontSize: 15, borderRadius: 12 }}
+              variant="gold"
+              size="lg"
+              loading={loading}
+              disabled={googleLoading}
+              style={{ marginTop: 4, width: '100%', borderRadius: 12 }}
             >
-              {loading ? (
-                <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                  <span className="anim-spin" style={{ width: 16, height: 16, border: '2px solid rgba(2,4,15,0.3)', borderTopColor: 'var(--c-navy-950)', borderRadius: '50%', display: 'inline-block' }} />
-                  Signing in…
-                </span>
-              ) : 'Sign in'}
-            </button>
+              Sign in
+            </Button>
           </form>
-        </div>
+        </Card>
 
         <p style={{ textAlign: 'center', marginTop: 24, fontSize: 12, color: 'rgba(255,255,255,0.4)', fontWeight: 500 }}>
           Secure &amp; Encrypted · Powered by KelliWorks

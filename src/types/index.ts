@@ -62,6 +62,7 @@ export interface BudgetLine {
   status: BudgetLineStatus
   due_day: number | null
   paid_date: string | null
+  notes: string | null
   created_at: string
 }
 
