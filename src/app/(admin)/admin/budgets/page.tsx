@@ -24,7 +24,7 @@ export default function AdminBudgetsPage() {
 
   useEffect(() => {
     const insforge = createClient()
-    insforge.database.from('profiles').select('id, full_name, email').eq('role', 'client').then(({ data }) => {
+    insforge.database.from('profiles').select('id, full_name, email').in('role', ['client', 'admin']).order('full_name', { ascending: true }).then(({ data }) => {
       setClients(data ?? [])
     })
   }, [])
