@@ -135,15 +135,9 @@ input, button, textarea, select {
   background: var(--c-surface);
   border: 1px solid var(--c-slate-200);
   box-shadow: var(--shadow-sm);
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   border-radius: var(--radius-lg);
 }
 
-.glass-card:hover {
-  box-shadow: var(--shadow-premium);
-  border-color: var(--c-gold-300);
-  transform: translateY(-2px);
-}
 
 .glass-nav {
   background: rgba(255, 255, 255, 0.8);

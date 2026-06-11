@@ -3,16 +3,17 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { PlaidLink } from 'react-plaid-link'
-import { Link2, ShieldCheck, Zap, ArrowRight, Building2, ShoppingBag, Globe, Lock, Plus, RefreshCw } from 'lucide-react'
+import { Link2, ShieldCheck, Zap, ArrowRight, Building2, ShoppingBag, Globe, Lock, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { motion } from 'framer-motion'
 
 export default function ConnectorsPage() {
   const [linkToken, setLinkToken] = useState<string | null>(null)
-  const [plaidItems, setPlaidItems] = useState<{ id: string; institution_name: string | null; last_synced_at: string | null }[]>([])
+  const [plaidItems, setPlaidItems] = useState<{ id: string; item_id: string; institution_name: string | null; last_synced_at: string | null }[]>([])
   const [loading, setLoading] = useState(true)
   const [linkError, setLinkError] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState<string | null>(null)
+  const [disconnecting, setDisconnecting] = useState<string | null>(null)
 
   useEffect(() => {
     async function init() {
@@ -29,7 +30,7 @@ export default function ConnectorsPage() {
         const { data: { user } } = await insforge.auth.getCurrentUser()
         if (user) {
           const { data: items } = await insforge.database
-            .from('plaid_items').select('id, institution_name, last_synced_at').eq('user_id', user.id)
+            .from('plaid_items').select('id, item_id, institution_name, last_synced_at').eq('user_id', user.id)
           setPlaidItems(items ?? [])
         }
       } catch (err: any) {
@@ -57,6 +58,21 @@ export default function ConnectorsPage() {
     } finally {
       setSyncing(false)
       setTimeout(() => setSyncResult(null), 5000)
+    }
+  }
+
+  async function handleDisconnect(itemId: string) {
+    if (!confirm('Disconnect this bank account? This will remove all linked data.')) return
+    setDisconnecting(itemId)
+    try {
+      await fetch('/api/plaid/disconnect', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item_id: itemId }),
+      })
+      setPlaidItems(prev => prev.filter(i => i.item_id !== itemId))
+    } finally {
+      setDisconnecting(null)
     }
   }
 
@@ -140,7 +156,21 @@ export default function ConnectorsPage() {
               plaidItems.map(item => (
                 <div key={item.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'white', borderRadius: 8, border: '1px solid var(--c-slate-100)' }}>
                   <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-navy-950)' }}>{item.institution_name}</span>
-                  <span className="badge badge-green" style={{ fontSize: 9 }}>Active</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span className="badge badge-green" style={{ fontSize: 9 }}>Active</span>
+                    <button
+                      onClick={() => handleDisconnect(item.item_id)}
+                      disabled={disconnecting === item.item_id}
+                      title="Disconnect"
+                      style={{
+                        background: 'none', border: 'none', cursor: 'pointer',
+                        color: 'var(--c-slate-300)', padding: 2, display: 'flex',
+                        opacity: disconnecting === item.item_id ? 0.4 : 1,
+                      }}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
                 </div>
               ))
             )}
