@@ -76,6 +76,16 @@ export default function ConnectorsPage() {
     }
   }
 
+  async function refreshLinkToken() {
+    try {
+      const res = await fetch('/api/plaid/create-link-token', { method: 'POST' })
+      const data = await res.json()
+      if (res.ok && data.link_token) {
+        setLinkToken(data.link_token)
+      }
+    } catch {}
+  }
+
   async function onPlaidSuccess(publicToken: string, metadata: { institution: { name: string } | null }) {
     await fetch('/api/plaid/exchange-token', {
       method: 'POST',
@@ -83,6 +93,12 @@ export default function ConnectorsPage() {
       body: JSON.stringify({ public_token: publicToken, institution_name: metadata.institution?.name }),
     })
     window.location.reload()
+  }
+
+  function onPlaidExit() {
+    // Token is consumed when modal opens — fetch a fresh one so Connect Bank works again
+    setLinkToken(null)
+    refreshLinkToken()
   }
 
   return (
@@ -122,6 +138,7 @@ export default function ConnectorsPage() {
                 <PlaidLink
                   token={linkToken}
                   onSuccess={onPlaidSuccess}
+                  onExit={onPlaidExit}
                   style={{
                     display: 'inline-flex', alignItems: 'center', gap: 6,
                     padding: '8px 16px', borderRadius: 12,
