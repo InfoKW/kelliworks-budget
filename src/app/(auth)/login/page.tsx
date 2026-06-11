@@ -35,14 +35,13 @@ function LoginForm() {
   useEffect(() => {
     async function checkUser() {
       const insforge = createClient()
-      const { data: { user } } = await insforge.auth.getCurrentUser()
-      if (user && !redirecting.current) {
-        redirecting.current = true
-        const { data: profile } = await insforge.database
-          .from('profiles').select('role').eq('id', user.id).single()
-        const dest = profile?.role === 'admin' ? '/admin' : '/dashboard'
-        router.replace(dest)
-      }
+      const { data: { user }, error } = await insforge.auth.getCurrentUser()
+      if (error || !user) return
+      redirecting.current = true
+      const { data: profile } = await insforge.database
+        .from('profiles').select('role').eq('id', user.id).single()
+      const dest = profile?.role === 'admin' ? '/admin' : '/dashboard'
+      router.replace(dest)
     }
     checkUser()
   // eslint-disable-next-line react-hooks/exhaustive-deps
