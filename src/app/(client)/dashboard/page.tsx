@@ -40,7 +40,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
 
   const { data: redAlerts }    = await insforge.database.from('alerts').select('id').eq('user_id', user.id).eq('severity', 'red').eq('status', 'pending')
   const { data: yellowAlerts } = await insforge.database.from('alerts').select('id').eq('user_id', user.id).eq('severity', 'yellow').eq('status', 'pending')
-  const { data: plaidItems }   = await insforge.database.from('plaid_items').select('id, institution_name').eq('user_id', user.id).limit(1)
+  const { data: plaidItems }   = await insforge.database.from('plaid_items').select('id, institution_name, item_status').eq('user_id', user.id).limit(1)
 
   const redCount    = (redAlerts ?? []).length
   const yellowCount = (yellowAlerts ?? []).length
@@ -129,11 +129,22 @@ export default async function DashboardPage({ searchParams }: PageProps) {
               {/* Plaid */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <span style={{ fontSize: 13, color: 'var(--c-slate-600)', fontWeight: 500 }}>Bank (Plaid)</span>
-                {(plaidItems ?? []).length > 0 ? (
-                  <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--c-green-600)', background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '2px 10px', borderRadius: 99 }}>
-                    {(plaidItems![0] as any).institution_name ?? 'Connected'}
-                  </span>
-                ) : (
+                {(plaidItems ?? []).length > 0 ? (() => {
+                  const p = plaidItems![0] as any
+                  const broken = p.item_status && p.item_status !== 'good'
+                  return (
+                    <span style={{
+                      fontSize: 11, fontWeight: 700, padding: '2px 10px', borderRadius: 99,
+                      color: broken ? '#dc2626' : 'var(--c-green-600)',
+                      background: broken ? '#fee2e2' : '#f0fdf4',
+                      border: `1px solid ${broken ? '#fca5a5' : '#bbf7d0'}`,
+                    }}>
+                      {broken
+                        ? (p.item_status === 'login_required' ? 'Reconnect Required' : 'Expiring Soon')
+                        : (p.institution_name ?? 'Connected')}
+                    </span>
+                  )
+                })() : (
                   <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--c-amber-600)', background: '#fffbeb', border: '1px solid #fde68a', padding: '2px 10px', borderRadius: 99 }}>
                     Not connected
                   </span>

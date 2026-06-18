@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import ClientNav from '@/components/ui/ClientNav'
+import PlaidReconnectCheck from '@/components/ui/PlaidReconnectCheck'
 // import KellyAIBubble from '@/components/ai/KellyAIBubble'
 
 export default async function ClientLayout({ children }: { children: React.ReactNode }) {
@@ -23,6 +24,7 @@ export default async function ClientLayout({ children }: { children: React.React
       <ClientNav profile={profile} />
       <main style={{ flex: 1, position: 'relative', zIndex: 1, padding: '32px 0' }}>
         <div className="container-page">
+          <PlaidReconnectCheck />
           {children}
         </div>
       </main>

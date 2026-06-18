@@ -3,17 +3,21 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { PlaidLink } from 'react-plaid-link'
-import { Link2, ShieldCheck, Zap, ArrowRight, Building2, ShoppingBag, Globe, Lock, Plus, RefreshCw, Trash2 } from 'lucide-react'
+import { Link2, ShieldCheck, Zap, ArrowRight, Building2, ShoppingBag, Globe, Lock, Plus, RefreshCw, Trash2, AlertTriangle } from 'lucide-react'
+import PlaidAddAccountsButton from '@/components/ui/PlaidAddAccountsButton'
 import { motion } from 'framer-motion'
 
 export default function ConnectorsPage() {
   const [linkToken, setLinkToken] = useState<string | null>(null)
-  const [plaidItems, setPlaidItems] = useState<{ id: string; item_id: string; institution_name: string | null; last_synced_at: string | null }[]>([])
+  const [plaidItems, setPlaidItems] = useState<{ id: string; item_id: string; institution_name: string | null; last_synced_at: string | null; item_status: string }[]>([])
   const [loading, setLoading] = useState(true)
   const [linkError, setLinkError] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState<string | null>(null)
   const [disconnecting, setDisconnecting] = useState<string | null>(null)
+  // Update mode state: maps plaid_item_id → link token for reconnect flow
+  const [updateTokens, setUpdateTokens] = useState<Record<string, string>>({})
+  const [reconnecting, setReconnecting] = useState<string | null>(null)
 
   useEffect(() => {
     async function init() {
@@ -24,13 +28,16 @@ export default function ConnectorsPage() {
           setLinkError(data.error ?? 'Could not initialise Plaid. Check your API credentials.')
         } else {
           setLinkToken(data.link_token)
+          // Store for OAuth redirect resume — survives page navigation to bank OAuth
+          sessionStorage.setItem('plaid_link_token', data.link_token)
+          sessionStorage.setItem('plaid_oauth_mode', 'connect')
         }
 
         const insforge = createClient()
         const { data: { user } } = await insforge.auth.getCurrentUser()
         if (user) {
           const { data: items } = await insforge.database
-            .from('plaid_items').select('id, item_id, institution_name, last_synced_at').eq('user_id', user.id)
+            .from('plaid_items').select('id, item_id, institution_name, last_synced_at, item_status').eq('user_id', user.id)
           setPlaidItems(items ?? [])
         }
       } catch (err: any) {
@@ -82,20 +89,62 @@ export default function ConnectorsPage() {
       const data = await res.json()
       if (res.ok && data.link_token) {
         setLinkToken(data.link_token)
+        sessionStorage.setItem('plaid_link_token', data.link_token)
+        sessionStorage.setItem('plaid_oauth_mode', 'connect')
       }
     } catch {}
   }
 
-  async function onPlaidSuccess(publicToken: string, metadata: { institution: { name: string } | null }) {
+  async function handleReconnect(itemId: string) {
+    setReconnecting(itemId)
+    try {
+      const res = await fetch('/api/plaid/update-mode/create-link-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plaid_item_id: itemId }),
+      })
+      const data = await res.json()
+      if (res.ok && data.link_token) {
+        setUpdateTokens(prev => ({ ...prev, [itemId]: data.link_token }))
+        // Store for OAuth redirect resume
+        sessionStorage.setItem('plaid_link_token', data.link_token)
+        sessionStorage.setItem('plaid_oauth_mode', `update:${itemId}`)
+      }
+    } finally {
+      setReconnecting(null)
+    }
+  }
+
+  async function onUpdateSuccess(_publicToken: string, itemId: string, metadata?: { link_session_id?: string }) {
+    console.log('[Plaid] update mode onSuccess link_session_id:', metadata?.link_session_id, '| item:', itemId)
+    // No token re-exchange needed — access_token is unchanged after update mode.
+    // Just clear the error state in our DB.
+    await fetch('/api/plaid/update-mode/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plaid_item_id: itemId }),
+    })
+    setUpdateTokens(prev => { const n = { ...prev }; delete n[itemId]; return n })
+    setPlaidItems(prev => prev.map(i => i.id === itemId ? { ...i, item_status: 'good' } : i))
+  }
+
+  async function onPlaidSuccess(publicToken: string, metadata: { institution: { name: string; institution_id: string } | null; link_session_id: string }) {
+    console.log('[Plaid] onSuccess link_session_id:', metadata.link_session_id, '| institution:', metadata.institution?.name)
     await fetch('/api/plaid/exchange-token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ public_token: publicToken, institution_name: metadata.institution?.name }),
+      body: JSON.stringify({
+        public_token: publicToken,
+        institution_name: metadata.institution?.name ?? null,
+        institution_id: metadata.institution?.institution_id ?? null,
+        link_session_id: metadata.link_session_id,
+      }),
     })
     window.location.reload()
   }
 
-  function onPlaidExit() {
+  function onPlaidExit(_error: unknown, metadata: { link_session_id?: string }) {
+    console.log('[Plaid] onExit link_session_id:', metadata?.link_session_id)
     // Token is consumed when modal opens — fetch a fresh one so Connect Bank works again
     setLinkToken(null)
     refreshLinkToken()
@@ -170,26 +219,83 @@ export default function ConnectorsPage() {
             {plaidItems.length === 0 ? (
               <p style={{ fontSize: 12, color: 'var(--c-slate-400)', fontStyle: 'italic' }}>No banks connected.</p>
             ) : (
-              plaidItems.map(item => (
-                <div key={item.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: 'white', borderRadius: 8, border: '1px solid var(--c-slate-100)' }}>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-navy-950)' }}>{item.institution_name}</span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span className="badge badge-green" style={{ fontSize: 9 }}>Active</span>
-                    <button
-                      onClick={() => handleDisconnect(item.item_id)}
-                      disabled={disconnecting === item.item_id}
-                      title="Disconnect"
-                      style={{
-                        background: 'none', border: 'none', cursor: 'pointer',
-                        color: 'var(--c-slate-300)', padding: 2, display: 'flex',
-                        opacity: disconnecting === item.item_id ? 0.4 : 1,
-                      }}
-                    >
-                      <Trash2 size={13} />
-                    </button>
+              plaidItems.map(item => {
+                const needsReconnect = item.item_status !== 'good'
+                const updateToken = updateTokens[item.id]
+                return (
+                  <div key={item.id} style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '8px 12px', background: needsReconnect ? 'var(--c-red-50, #fff1f2)' : 'white', borderRadius: 8, border: `1px solid ${needsReconnect ? 'var(--c-red-200, #fecdd3)' : 'var(--c-slate-100)'}` }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {needsReconnect && <AlertTriangle size={12} color="var(--c-red-500, #ef4444)" />}
+                        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-navy-950)' }}>{item.institution_name}</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        {needsReconnect ? (
+                          <span className="badge badge-red" style={{ fontSize: 9 }}>
+                            {item.item_status === 'login_required' ? 'Login Required' :
+                             item.item_status === 'pending_expiration' ? 'Expiring Soon' :
+                             item.item_status === 'pending_disconnect' ? 'Expiring Soon' : 'Error'}
+                          </span>
+                        ) : (
+                          <span className="badge badge-green" style={{ fontSize: 9 }}>Active</span>
+                        )}
+                        <button
+                          onClick={() => handleDisconnect(item.item_id)}
+                          disabled={disconnecting === item.item_id}
+                          title="Disconnect"
+                          style={{
+                            background: 'none', border: 'none', cursor: 'pointer',
+                            color: 'var(--c-slate-300)', padding: 2, display: 'flex',
+                            opacity: disconnecting === item.item_id ? 0.4 : 1,
+                          }}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
+                    {/* Add / remove accounts — only shown when connection is healthy */}
+                    {!needsReconnect && (
+                      <PlaidAddAccountsButton
+                        plaidItemId={item.id}
+                        institutionName={item.institution_name}
+                      />
+                    )}
+
+                    {needsReconnect && (
+                      updateToken ? (
+                        <PlaidLink
+                          token={updateToken}
+                          onSuccess={(_token) => onUpdateSuccess(_token, item.id)}
+                          onExit={() => setUpdateTokens(prev => { const n = { ...prev }; delete n[item.id]; return n })}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 6,
+                            padding: '6px 12px', borderRadius: 8, fontSize: 11, fontWeight: 600,
+                            background: 'var(--c-red-500, #ef4444)', color: 'white',
+                            border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                          }}
+                        >
+                          <RefreshCw size={11} /> Reconnect
+                        </PlaidLink>
+                      ) : (
+                        <button
+                          onClick={() => handleReconnect(item.id)}
+                          disabled={reconnecting === item.id}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 6,
+                            padding: '6px 12px', borderRadius: 8, fontSize: 11, fontWeight: 600,
+                            background: 'var(--c-red-500, #ef4444)', color: 'white',
+                            border: 'none', cursor: reconnecting === item.id ? 'not-allowed' : 'pointer',
+                            fontFamily: 'inherit', opacity: reconnecting === item.id ? 0.6 : 1,
+                          }}
+                        >
+                          <RefreshCw size={11} style={{ animation: reconnecting === item.id ? 'spin 0.8s linear infinite' : 'none' }} />
+                          {reconnecting === item.id ? 'Loading…' : 'Reconnect'}
+                        </button>
+                      )
+                    )}
                   </div>
-                </div>
-              ))
+                )
+              })
             )}
           </div>
         </div>
