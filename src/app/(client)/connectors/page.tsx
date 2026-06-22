@@ -130,7 +130,7 @@ export default function ConnectorsPage() {
 
   async function onPlaidSuccess(publicToken: string, metadata: { institution: { name: string; institution_id: string } | null; link_session_id: string }) {
     console.log('[Plaid] onSuccess link_session_id:', metadata.link_session_id, '| institution:', metadata.institution?.name)
-    await fetch('/api/plaid/exchange-token', {
+    const exchangeRes = await fetch('/api/plaid/exchange-token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -140,6 +140,21 @@ export default function ConnectorsPage() {
         link_session_id: metadata.link_session_id,
       }),
     })
+    if (exchangeRes.ok) {
+      setSyncing(true)
+      setSyncResult('Syncing transactions…')
+      try {
+        const syncRes = await fetch('/api/plaid/sync-transactions', { method: 'POST' })
+        const syncJson = await syncRes.json()
+        if (syncRes.ok) {
+          setSyncResult(`${syncJson.synced} transaction${syncJson.synced !== 1 ? 's' : ''} synced`)
+        }
+      } catch {
+        // Non-fatal — data will sync via daily cron
+      } finally {
+        setSyncing(false)
+      }
+    }
     window.location.reload()
   }
 
