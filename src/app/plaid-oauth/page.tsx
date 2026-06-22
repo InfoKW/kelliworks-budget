@@ -35,7 +35,7 @@ function OAuthResume({
   token: string
   receivedRedirectUri: string
   onSuccess: (publicToken: string, metadata: any) => void
-  onExit: () => void
+  onExit: (error: unknown, metadata: any) => void
 }) {
   const { open, ready } = usePlaidLink({ token, receivedRedirectUri, onSuccess, onExit })
 
