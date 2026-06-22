@@ -47,7 +47,8 @@ export async function POST() {
     const savedCursor = item.cursor
 
     try {
-      // Only store/match transactions for months that have an uploaded budget.
+      // Fetch budget months so we can run the matcher only where a budget exists.
+      // Transactions are stored regardless of whether a budget exists.
       const { data: userBudgets } = await supabase.database
         .from('budgets').select('month').eq('user_id', item.user_id)
       const budgetMonths = new Set(
@@ -93,18 +94,16 @@ export async function POST() {
       }
 
       // ── Added ────────────────────────────────────────────────────────────────
-      const addedInBudget = allAdded.filter(t => budgetMonths.has(t.date.slice(0, 7)))
-      if (addedInBudget.length > 0) {
+      if (allAdded.length > 0) {
         await supabase.database.from('transactions').upsert(
-          addedInBudget,
+          allAdded,
           { onConflict: 'plaid_transaction_id', ignoreDuplicates: true },
         )
-        totalSynced += addedInBudget.length
+        totalSynced += allAdded.length
       }
 
       // ── Modified ─────────────────────────────────────────────────────────────
-      const modifiedInBudget = allModified.filter(t => budgetMonths.has(t.date.slice(0, 7)))
-      for (const txn of modifiedInBudget) {
+      for (const txn of allModified) {
         await supabase.database.from('transactions')
           .update({
             amount: txn.amount,
@@ -130,10 +129,10 @@ export async function POST() {
         .update({ cursor, last_synced_at: new Date().toISOString() })
         .eq('id', item.id)
 
-      // Re-run matcher for every affected budget month
+      // Re-run matcher only for months that have a budget
       const monthsToMatch = new Set([
-        ...addedInBudget.map(t => `${t.date.slice(0, 7)}-01`),
-        ...modifiedInBudget.map(t => `${t.date.slice(0, 7)}-01`),
+        ...allAdded.filter(t => budgetMonths.has(t.date.slice(0, 7))).map(t => `${t.date.slice(0, 7)}-01`),
+        ...allModified.filter(t => budgetMonths.has(t.date.slice(0, 7))).map(t => `${t.date.slice(0, 7)}-01`),
       ])
       for (const month of monthsToMatch) {
         await matchTransactionsForUser(item.user_id, month)
