@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { PlaidLink } from 'react-plaid-link'
-import { Link2, ShieldCheck, Zap, ArrowRight, Building2, ShoppingBag, Globe, Lock, Plus, RefreshCw, Trash2, AlertTriangle } from 'lucide-react'
+import { Link2, Building2, Lock, Plus, RefreshCw, Trash2, AlertTriangle } from 'lucide-react'
 import PlaidAddAccountsButton from '@/components/ui/PlaidAddAccountsButton'
 import { motion } from 'framer-motion'
 
@@ -313,37 +313,6 @@ export default function ConnectorsPage() {
               })
             )}
           </div>
-        </div>
-
-        {/* Other Placeholder Connectors */}
-        <div className="glass-card" style={{ padding: 24 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: 20 }}>
-            <div style={{ 
-              width: 48, height: 48, borderRadius: 12, background: 'var(--c-bg)', 
-              display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#635bff'
-            }}>
-              <Globe />
-            </div>
-            <div className="badge badge-neutral">Coming Soon</div>
-          </div>
-          <h3 style={{ fontSize: 18, color: 'var(--c-navy-950)', marginBottom: 4 }}>Stripe</h3>
-          <p style={{ fontSize: 13, color: 'var(--c-slate-500)', marginBottom: 20 }}>Business Platform</p>
-          <button className="btn btn-outline btn-sm" style={{ width: '100%' }} disabled>Connect</button>
-        </div>
-
-        <div className="glass-card" style={{ padding: 24 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: 20 }}>
-            <div style={{ 
-              width: 48, height: 48, borderRadius: 12, background: 'var(--c-bg)', 
-              display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ff9900'
-            }}>
-              <ShoppingBag />
-            </div>
-            <div className="badge badge-neutral">Coming Soon</div>
-          </div>
-          <h3 style={{ fontSize: 18, color: 'var(--c-navy-950)', marginBottom: 4 }}>Amazon</h3>
-          <p style={{ fontSize: 13, color: 'var(--c-slate-500)', marginBottom: 20 }}>Marketplace Sync</p>
-          <button className="btn btn-outline btn-sm" style={{ width: '100%' }} disabled>Connect</button>
         </div>
 
         <motion.div 
