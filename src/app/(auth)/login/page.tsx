@@ -73,6 +73,12 @@ function LoginForm() {
       return
     }
 
+    // Set session cookie so server-side API routes can authenticate
+    const session = (insforge as any).tokenManager?.getSession()
+    if (session?.accessToken) {
+      document.cookie = `insforge_access_token=${session.accessToken}; path=/; max-age=3600; SameSite=Lax`
+    }
+
     redirecting.current = true
     const dest = profile.role === 'admin' ? '/admin' : '/dashboard'
     router.push(dest)

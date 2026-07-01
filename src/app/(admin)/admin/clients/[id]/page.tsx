@@ -1,12 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
 import { notFound } from 'next/navigation'
-import { formatCurrency, formatDate, getCurrentMonth, getMonthLabel } from '@/lib/utils'
-import { Card, Badge, SectionLabel, ProgressBar } from '@/components/ui'
-import { ArrowLeft, AlertTriangle, AlertCircle, Building2 } from 'lucide-react'
+import { formatCurrency, formatDate, getCurrentMonth } from '@/lib/utils'
+import { Card, SectionLabel } from '@/components/ui'
+import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
-import DeleteClientModal from '@/components/admin/DeleteClientModal'
 import EditClientName from '@/components/admin/EditClientName'
-import type { BudgetLine } from '@/types'
+import ClientActionsMenu from '@/components/admin/ClientActionsMenu'
+import ClientBudgetSections from '@/components/admin/ClientBudgetSections'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -19,207 +19,165 @@ export default async function AdminClientDetailPage({ params }: PageProps) {
   const [
     { data: profile },
     { data: alerts },
-    { data: transactions },
     { data: plaidItems },
+    { data: allBudgets },
   ] = await Promise.all([
     supabase.database.from('profiles').select('*').eq('id', id).single(),
-    supabase.database.from('alerts').select('*').eq('user_id', id).eq('status', 'pending').order('created_at', { ascending: false }),
-    supabase.database.from('transactions').select('*').eq('user_id', id).order('date', { ascending: false }).limit(20),
-    supabase.database.from('plaid_items').select('id, institution_name, last_synced_at').eq('user_id', id),
+    supabase.database.from('alerts').select('id').eq('user_id', id).eq('status', 'pending'),
+    supabase.database.from('plaid_items').select('id').eq('user_id', id),
+    supabase.database.from('budgets').select('*').eq('user_id', id).order('month', { ascending: false }),
   ])
 
   if (!profile) notFound()
 
-  const month = getCurrentMonth()
-  const { data: budget } = await supabase.database.from('budgets').select('*').eq('user_id', id).eq('month', month).single()
-  const { data: lines } = budget
-    ? await supabase.database.from('budget_lines').select('*').eq('budget_id', budget.id).order('due_day')
+  // Fetch all budget lines for all budgets
+  const budgetIds = (allBudgets ?? []).map((b: any) => b.id)
+  const { data: allLines } = budgetIds.length > 0
+    ? await supabase.database.from('budget_lines').select('*').in('budget_id', budgetIds)
     : { data: [] }
 
-  const totalEstimated = budget?.total_estimated ?? 0
-  const totalActual = (lines ?? []).reduce((s: number, l: BudgetLine) => s + (l.actual_amount ?? 0), 0)
-  const pct = totalEstimated > 0 ? Math.round((totalActual / totalEstimated) * 100) : 0
+  // Group lines by budget_id
+  const linesByBudget: Record<string, any[]> = {}
+  for (const line of allLines ?? []) {
+    if (!linesByBudget[line.budget_id]) linesByBudget[line.budget_id] = []
+    linesByBudget[line.budget_id].push(line)
+  }
+
+  // Current month transactions
+  const month = getCurrentMonth()
+  const [y, mo] = month.slice(0, 7).split('-').map(Number)
+  const nextMonth = mo === 12 ? `${y + 1}-01-01` : `${y}-${String(mo + 1).padStart(2, '0')}-01`
+
+  const { data: transactions } = await supabase.database
+    .from('transactions')
+    .select('*')
+    .eq('user_id', id)
+    .gte('date', month)
+    .lt('date', nextMonth)
+    .order('date', { ascending: false })
+    .limit(30)
+
+  const txns = (transactions ?? []) as any[]
+  const matchedCount     = txns.filter(t => t.is_matched).length
+  const untrackedCount   = txns.filter(t => t.is_untracked).length
+  const needsReviewCount = txns.filter(t => !t.is_matched && !t.is_untracked && (t.match_confidence ?? 0) >= 40).length
 
   const displayName = profile.full_name || profile.email
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
 
-      {/* Back + header */}
-      <div>
-        <Link href="/admin/clients" style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6,
-          fontSize: 13, color: 'var(--c-slate-500)', fontWeight: 500,
-          textDecoration: 'none', marginBottom: 16,
-        }}>
-          <ArrowLeft size={13} /> All Clients
-        </Link>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-          <div>
-            <SectionLabel style={{ marginBottom: 10 }}>Admin · Client Detail</SectionLabel>
-            <h1 style={{ fontSize: 32, color: 'var(--c-navy-950)' }}>{displayName}</h1>
-            <p style={{ fontSize: 14, color: 'var(--c-slate-500)', marginTop: 4 }}>{profile.email}</p>
-            <EditClientName clientId={id} currentName={profile.full_name} />
-          </div>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            <DeleteClientModal
-              clientId={id}
-              clientEmail={profile.email}
-              clientName={displayName}
-            />
-            {budget && (
-              <Link href={`/admin/clients/${id}/budget?month=${month}`} style={{
-                display: 'inline-flex', alignItems: 'center', gap: 6,
-                padding: '9px 18px', borderRadius: 10, fontSize: 13, fontWeight: 600,
-                background: 'var(--c-slate-100)', color: 'var(--c-navy-950)',
-                border: '1px solid var(--c-slate-200)', textDecoration: 'none',
-              }}>
-                View Budget →
-              </Link>
-            )}
-            <Link href="/admin/budgets" style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              padding: '9px 18px', borderRadius: 10, fontSize: 13, fontWeight: 600,
-              background: 'var(--c-gold-500)', color: 'white', textDecoration: 'none',
-              boxShadow: '0 4px 12px rgba(184,134,11,0.2)',
+      {/* Back link */}
+      <Link href="/admin/clients" style={{
+        display: 'inline-flex', alignItems: 'center', gap: 6,
+        fontSize: 13, color: 'var(--c-slate-500)', fontWeight: 500,
+        textDecoration: 'none', marginBottom: -16,
+      }}>
+        <ArrowLeft size={13} /> All Clients
+      </Link>
+
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <SectionLabel style={{ marginBottom: 10 }}>Admin · Client Detail</SectionLabel>
+          <h1 style={{ fontSize: 32, color: 'var(--c-navy-950)' }}>{displayName}</h1>
+          <p style={{ fontSize: 14, color: 'var(--c-slate-500)', marginTop: 4 }}>{profile.email}</p>
+          <EditClientName clientId={id} currentName={profile.full_name} />
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Banks Connected pill */}
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 8,
+            padding: '7px 14px', borderRadius: 8,
+            background: 'var(--c-slate-100)', border: '1px solid var(--c-slate-200)',
+            fontSize: 13, fontWeight: 600, color: 'var(--c-navy-950)',
+          }}>
+            Banks Connected
+            <span style={{
+              background: 'var(--c-navy-950)', color: 'white',
+              borderRadius: 99, padding: '1px 8px', fontSize: 12, fontWeight: 700,
             }}>
-              Upload Budget →
-            </Link>
+              {(plaidItems ?? []).length}
+            </span>
           </div>
+
+          {/* Open Alerts pill */}
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 8,
+            padding: '7px 14px', borderRadius: 8,
+            background: 'var(--c-slate-100)', border: '1px solid var(--c-slate-200)',
+            fontSize: 13, fontWeight: 600, color: 'var(--c-navy-950)',
+          }}>
+            Open Alerts
+            <span style={{
+              background: 'var(--c-navy-950)', color: 'white',
+              borderRadius: 99, padding: '1px 8px', fontSize: 12, fontWeight: 700,
+            }}>
+              {(alerts ?? []).length}
+            </span>
+          </div>
+
+          {/* Upload Budget */}
+          <Link href="/admin/budgets" style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '9px 18px', borderRadius: 10, fontSize: 13, fontWeight: 600,
+            background: 'var(--c-gold-500)', color: 'white', textDecoration: 'none',
+            boxShadow: '0 4px 12px rgba(184,134,11,0.2)',
+          }}>
+            Upload Budget →
+          </Link>
+
+          {/* Three-dot menu */}
+          <ClientActionsMenu clientId={id} clientEmail={profile.email} clientName={displayName} />
         </div>
       </div>
 
-      {/* Stat cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
-        <Card padding={20}>
-          <p style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--c-slate-500)', marginBottom: 8 }}>Subscription</p>
-          <Badge variant={profile.subscription_status === 'active' ? 'green' : 'red'}>
-            {profile.subscription_status}
-          </Badge>
-        </Card>
-        <Card padding={20}>
-          <p style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--c-slate-500)', marginBottom: 8 }}>Open Alerts</p>
-          <p style={{ fontFamily: 'var(--font-display)', fontSize: 28, color: (alerts ?? []).length > 0 ? 'var(--c-red-500)' : 'var(--c-navy-950)', lineHeight: 1 }}>
-            {(alerts ?? []).length}
-          </p>
-        </Card>
-        <Card padding={20}>
-          <p style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--c-slate-500)', marginBottom: 8 }}>Month Budget</p>
-          <p style={{ fontFamily: 'var(--font-display)', fontSize: 28, color: 'var(--c-navy-950)', lineHeight: 1 }}>
-            {formatCurrency(totalEstimated)}
-          </p>
-        </Card>
-        <Card padding={20}>
-          <p style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--c-slate-500)', marginBottom: 8 }}>Banks Connected</p>
-          <p style={{ fontFamily: 'var(--font-display)', fontSize: 28, color: 'var(--c-navy-950)', lineHeight: 1 }}>
-            {(plaidItems ?? []).length}
-          </p>
-        </Card>
-      </div>
+      {/* Budget sections grouped by month */}
+      <ClientBudgetSections
+        budgets={(allBudgets ?? []) as any}
+        linesByBudget={linesByBudget as any}
+        clientId={id}
+      />
 
-      {/* Budget progress */}
-      {budget && (
-        <Card padding={28}>
-          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 16 }}>
-            <div>
-              <SectionLabel style={{ marginBottom: 8 }}>{getMonthLabel(month)} Budget</SectionLabel>
-              <span style={{
-                fontFamily: 'var(--font-display)', fontSize: 40, lineHeight: 1,
-                color: pct >= 100 ? 'var(--c-red-500)' : pct >= 80 ? 'var(--c-amber-500)' : 'var(--c-gold-600)',
-              }}>
-                {pct}%
+      {/* Transactions */}
+      <div>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20, gap: 16, flexWrap: 'wrap' }}>
+          <div>
+            <h2 style={{ fontSize: 24, fontWeight: 700, color: 'var(--c-navy-950)', marginBottom: 6 }}>Recent Transactions</h2>
+            <p style={{ fontSize: 13, color: 'var(--c-gold-600)', marginBottom: 12 }}>
+              Showing the latest 30 transactions for the current month
+            </p>
+            <div style={{ display: 'flex', gap: 20, alignItems: 'center', fontSize: 13, color: 'var(--c-slate-600)', flexWrap: 'wrap' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} />
+                {matchedCount} Matched
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#f59e0b', display: 'inline-block' }} />
+                {needsReviewCount} Needs Review
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444', display: 'inline-block' }} />
+                {untrackedCount} Untracked
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--c-slate-400)', display: 'inline-block' }} />
+                {txns.length} Total
               </span>
             </div>
-            <p style={{ fontSize: 13, color: 'var(--c-slate-500)', fontWeight: 500 }}>
-              {formatCurrency(totalActual)} of {formatCurrency(totalEstimated)}
-            </p>
           </div>
-          <ProgressBar value={pct} height={10} statusColor />
-        </Card>
-      )}
 
-      {/* Budget lines + alerts side by side */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-
-        {/* Budget lines */}
-        <div>
-          <SectionLabel style={{ marginBottom: 14 }}>{getMonthLabel(month)} Budget Lines</SectionLabel>
-          {(lines ?? []).length === 0 ? (
-            <Card padding={32} style={{ textAlign: 'center' }}>
-              <p style={{ fontSize: 13, color: 'var(--c-slate-400)' }}>No budget set for this month.</p>
-              <Link href="/admin/budgets" style={{ fontSize: 13, color: 'var(--c-gold-600)', fontWeight: 600, marginTop: 8, display: 'inline-block' }}>
-                Upload budget →
-              </Link>
-            </Card>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {(lines ?? []).map((line: BudgetLine) => (
-                <Card key={line.id} padding="14px 18px">
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--c-navy-950)' }}>{line.category}</p>
-                      {line.due_day && <p style={{ fontSize: 11, color: 'var(--c-slate-400)', marginTop: 2 }}>Due day {line.due_day}</p>}
-                    </div>
-                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                      <p style={{ fontSize: 14, fontWeight: 800, color: 'var(--c-navy-950)' }}>{formatCurrency(line.actual_amount)}</p>
-                      <p style={{ fontSize: 11, color: 'var(--c-slate-400)' }}>/ {formatCurrency(line.estimated_amount)}</p>
-                    </div>
-                  </div>
-                  {line.estimated_amount > 0 && (
-                    <ProgressBar
-                      value={line.estimated_amount > 0 ? Math.min((line.actual_amount / line.estimated_amount) * 100, 100) : 0}
-                      height={3}
-                      statusColor
-                    />
-                  )}
-                </Card>
-              ))}
-            </div>
-          )}
+          <Link href={`/admin/clients/${id}/transactions`} style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '10px 20px', borderRadius: 10, fontSize: 13, fontWeight: 600,
+            background: 'var(--c-gold-500)', color: 'white', textDecoration: 'none',
+            boxShadow: '0 4px 12px rgba(184,134,11,0.2)', whiteSpace: 'nowrap', flexShrink: 0,
+          }}>
+            View/Match Transactions
+          </Link>
         </div>
 
-        {/* Alerts */}
-        <div>
-          <SectionLabel style={{ marginBottom: 14 }}>Open Alerts</SectionLabel>
-          {(alerts ?? []).length === 0 ? (
-            <Card padding={32} style={{ textAlign: 'center' }}>
-              <p style={{ fontSize: 13, color: 'var(--c-slate-400)' }}>No pending alerts.</p>
-            </Card>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {(alerts ?? []).map((alert: { id: string; severity: string; title: string; description: string | null; amount: number | null; created_at: string }) => {
-                const isRed = alert.severity === 'red'
-                return (
-                  <Card key={alert.id} padding="14px 18px" style={{
-                    borderColor: isRed ? 'rgba(239,68,68,0.2)' : 'rgba(245,158,11,0.2)',
-                    background: isRed ? 'rgba(239,68,68,0.04)' : 'rgba(245,158,11,0.04)',
-                  }}>
-                    <div style={{ display: 'flex', gap: 12 }}>
-                      <div style={{ marginTop: 2, flexShrink: 0 }}>
-                        {isRed
-                          ? <AlertCircle size={15} color="var(--c-red-500)" />
-                          : <AlertTriangle size={15} color="var(--c-amber-500)" />}
-                      </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--c-navy-950)', marginBottom: 2 }}>{alert.title}</p>
-                        {alert.description && <p style={{ fontSize: 12, color: 'var(--c-slate-500)', lineHeight: 1.5 }}>{alert.description}</p>}
-                        <p style={{ fontSize: 11, color: 'var(--c-slate-400)', marginTop: 4 }}>{formatDate(alert.created_at)}</p>
-                      </div>
-                      {alert.amount && (
-                        <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--c-navy-950)', flexShrink: 0 }}>{formatCurrency(alert.amount)}</p>
-                      )}
-                    </div>
-                  </Card>
-                )
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Recent transactions */}
-      <div>
-        <SectionLabel style={{ marginBottom: 14 }}>Recent Transactions</SectionLabel>
         <Card padding={0} style={{ overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
@@ -236,22 +194,31 @@ export default async function AdminClientDetailPage({ params }: PageProps) {
               </tr>
             </thead>
             <tbody>
-              {(transactions ?? []).length === 0 ? (
+              {txns.length === 0 ? (
                 <tr>
                   <td colSpan={4} style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--c-slate-400)', fontSize: 13 }}>
-                    No transactions synced yet.
+                    No transactions for this month yet.
                   </td>
                 </tr>
               ) : (
-                (transactions ?? []).map((txn: { id: string; date: string; name: string; amount: number; is_matched: boolean; is_untracked: boolean }, i: number) => (
+                txns.map((txn: any, i: number) => (
                   <tr key={txn.id} style={{ borderTop: i > 0 ? '1px solid var(--c-slate-100)' : 'none' }}>
-                    <td style={{ padding: '13px 20px', color: 'var(--c-slate-500)' }}>{formatDate(txn.date)}</td>
-                    <td style={{ padding: '13px 20px', fontWeight: 600, color: 'var(--c-navy-950)' }}>{txn.name}</td>
-                    <td style={{ padding: '13px 20px', textAlign: 'right', fontWeight: 700, color: 'var(--c-navy-950)' }}>{formatCurrency(txn.amount)}</td>
+                    <td style={{ padding: '13px 20px', color: 'var(--c-slate-500)', whiteSpace: 'nowrap' }}>
+                      {formatDate(txn.date)}
+                    </td>
+                    <td style={{ padding: '13px 20px', fontWeight: 600, color: 'var(--c-navy-950)' }}>
+                      {txn.name}
+                    </td>
+                    <td style={{ padding: '13px 20px', textAlign: 'right', fontWeight: 700, color: 'var(--c-navy-950)', whiteSpace: 'nowrap' }}>
+                      {formatCurrency(txn.amount)}
+                    </td>
                     <td style={{ padding: '13px 20px' }}>
-                      <Badge variant={txn.is_matched ? 'green' : txn.is_untracked ? 'gold' : 'neutral'}>
+                      <span style={{
+                        fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em',
+                        color: txn.is_matched ? '#16a34a' : txn.is_untracked ? '#b45309' : 'var(--c-slate-500)',
+                      }}>
                         {txn.is_matched ? 'Matched' : txn.is_untracked ? 'Untracked' : 'Pending'}
-                      </Badge>
+                      </span>
                     </td>
                   </tr>
                 ))

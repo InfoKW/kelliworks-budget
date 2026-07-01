@@ -5,9 +5,7 @@ export async function createClient() {
   const cookieStore = await cookies()
   const sessionToken = cookieStore.get('insforge_access_token')?.value
   
-  console.log('Server createClient: sessionToken found?', !!sessionToken)
-
-  return createInsforgeClient({
+return createInsforgeClient({
     baseUrl: process.env.NEXT_PUBLIC_INSFORGE_URL!,
     anonKey: process.env.NEXT_PUBLIC_INSFORGE_ANON_KEY!,
     isServerMode: true,

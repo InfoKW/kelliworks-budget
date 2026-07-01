@@ -14,9 +14,10 @@ type TxnRow = {
   category: string[]
   personal_finance_category_detailed: string | null
   pending: boolean
+  bill_type: 'personal' | 'business'
 }
 
-function toTxnRow(txn: any, userId: string): TxnRow {
+function toTxnRow(txn: any, userId: string, accountType: 'personal' | 'business'): TxnRow {
   return {
     plaid_transaction_id: txn.transaction_id,
     user_id: userId,
@@ -30,6 +31,7 @@ function toTxnRow(txn: any, userId: string): TxnRow {
       : (txn.category ?? []),
     personal_finance_category_detailed: txn.personal_finance_category?.detailed ?? null,
     pending: txn.pending ?? false,
+    bill_type: accountType,
   }
 }
 
@@ -85,8 +87,9 @@ export async function POST() {
 
         const { added, modified, removed, next_cursor, has_more } = res.data
 
-        for (const txn of added)     allAdded.push(toTxnRow(txn, item.user_id))
-        for (const txn of modified)  allModified.push(toTxnRow(txn, item.user_id))
+        const accountType: 'personal' | 'business' = item.account_type === 'business' ? 'business' : 'personal'
+        for (const txn of added)     allAdded.push(toTxnRow(txn, item.user_id, accountType))
+        for (const txn of modified)  allModified.push(toTxnRow(txn, item.user_id, accountType))
         for (const txn of removed)   removedIds.push(txn.transaction_id)
 
         cursor = next_cursor

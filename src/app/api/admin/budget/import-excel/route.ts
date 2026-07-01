@@ -14,9 +14,10 @@ export async function POST(req: NextRequest) {
   }
 
   const formData = await req.formData()
-  const file      = formData.get('file') as File | null
-  const client_id = formData.get('client_id') as string | null
-  const month     = formData.get('month') as string | null
+  const file        = formData.get('file') as File | null
+  const client_id   = formData.get('client_id') as string | null
+  const month       = formData.get('month') as string | null
+  const budget_type = (formData.get('budget_type') as string | null) ?? 'both'
 
   if (!file || !client_id || !month) {
     return NextResponse.json({ error: 'file, client_id, and month are required' }, { status: 400 })
@@ -31,7 +32,7 @@ export async function POST(req: NextRequest) {
   try {
     const arrayBuffer = await file.arrayBuffer()
     const buffer = Buffer.from(arrayBuffer)
-    result = parseExcelBudget(buffer)
+    result = parseExcelBudget(buffer, budget_type as 'business' | 'personal' | 'both')
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 422 })
   }

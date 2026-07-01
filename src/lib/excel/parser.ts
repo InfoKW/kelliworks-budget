@@ -303,12 +303,21 @@ function parseForecastSheet(ws: XLSX.WorkSheet): ForecastItem[] {
 
 // ── Main export ───────────────────────────────────────────────────────────────
 
-export function parseExcelBudget(buffer: Buffer): ExcelParseResult {
+export function parseExcelBudget(buffer: Buffer, budgetType: 'business' | 'personal' | 'both' = 'both'): ExcelParseResult {
   const wb = XLSX.read(buffer, { type: 'buffer' })
 
-  const bizSheet    = wb.Sheets['BIZ Budget']
-  const perSheet    = wb.Sheets['PERSONAL Budget']
+  const includeBiz      = budgetType === 'business' || budgetType === 'both'
+  const includePersonal = budgetType === 'personal' || budgetType === 'both'
 
+  const bizSheet = includeBiz      ? wb.Sheets['BIZ Budget']      : undefined
+  const perSheet = includePersonal ? wb.Sheets['PERSONAL Budget'] : undefined
+
+  if (budgetType === 'business' && !bizSheet) {
+    throw new Error('Could not find "BIZ Budget" sheet in the uploaded file. Make sure you are using the KelliWorks budget template.')
+  }
+  if (budgetType === 'personal' && !perSheet) {
+    throw new Error('Could not find "PERSONAL Budget" sheet in the uploaded file. Make sure you are using the KelliWorks budget template.')
+  }
   if (!bizSheet && !perSheet) {
     throw new Error('Could not find "BIZ Budget" or "PERSONAL Budget" sheets. Make sure you are uploading the KelliWorks budget template.')
   }

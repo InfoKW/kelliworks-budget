@@ -92,7 +92,7 @@ const fmt = (n: number) =>
 export async function recalculateBudgetLineActual(supabase: any, lineId: string) {
   const [{ data: line }, { data: txns }] = await Promise.all([
     supabase.database.from('budget_lines').select('estimated_amount, status').eq('id', lineId).single(),
-    supabase.database.from('transactions').select('amount').eq('budget_line_id', lineId).eq('is_matched', true),
+    supabase.database.from('transactions').select('amount').eq('budget_line_id', lineId),
   ])
 
   const total = (txns ?? []).reduce((s: number, t: { amount: number }) => s + t.amount, 0)

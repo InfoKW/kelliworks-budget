@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  const { client_id, sheet_url, month } = await req.json()
+  const { client_id, sheet_url, month, budget_type } = await req.json()
 
   if (!client_id || !sheet_url || !month) {
     return NextResponse.json({ error: 'client_id, sheet_url, and month are required' }, { status: 400 })
@@ -58,6 +58,11 @@ export async function POST(req: NextRequest) {
   // Replace all lines
   await insforge.database.from('budget_lines').delete().eq('budget_id', budgetId)
 
+  const resolvedBillType = (t: 'business' | 'personal') =>
+    budget_type === 'business' ? 'business'
+    : budget_type === 'personal' ? 'personal'
+    : t
+
   const insertRows = result.rows.map(row => ({
     budget_id:        budgetId,
     user_id:          client_id,
@@ -68,7 +73,7 @@ export async function POST(req: NextRequest) {
     status:           row.status,
     due_day:          row.dueDay ?? null,
     notes:            JSON.stringify({
-      bill_type:       row.billType,
+      bill_type:       resolvedBillType(row.billType),
       frequency:       row.frequency       ?? null,
       payment_account: row.paymentAccount  ?? null,
       auto_pay:        row.autoPay,

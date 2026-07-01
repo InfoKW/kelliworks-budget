@@ -3,7 +3,7 @@
 import React, { useState } from 'react'
 import { formatCurrency } from '@/lib/utils'
 import { Card, Badge, SectionLabel } from '@/components/ui'
-import { Building2, User, CalendarDays, TrendingUp, LayoutDashboard } from 'lucide-react'
+import { Building2, User, LayoutDashboard } from 'lucide-react'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -30,30 +30,6 @@ interface ParsedLine extends RawLine {
   display_status: string
 }
 
-interface CalendarItem {
-  week: number
-  vendor: string
-  category: string
-  amount: number
-  account: string | null
-  auto_pay: boolean
-  due_day: number | null
-  notes: string | null
-}
-
-interface ForecastItem {
-  vendor: string
-  category: string
-  m1_budget: number
-  m1_projected: number
-  m2_budget: number
-  m2_projected: number
-  m3_budget: number
-  m3_projected: number
-  frequency: string | null
-  notes: string | null
-}
-
 interface Budget {
   total_estimated: number
   notes?: string | null
@@ -65,7 +41,7 @@ interface Props {
   month: string
 }
 
-type Tab = 'overview' | 'business' | 'personal' | 'calendar' | 'forecast'
+type Tab = 'overview' | 'business' | 'personal'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -323,26 +299,6 @@ function DashboardView({ lines }: { lines: ParsedLine[] }) {
   const perBudget = per.reduce((s, l) => s + l.estimated_amount, 0)
   const perActual = per.reduce((s, l) => s + l.actual_amount, 0)
 
-  // Category cross-tab
-  const allCats = Array.from(new Set(lines.map(l => l.category_label))).sort()
-  const catMap: Record<string, { bizEst: number; bizAct: number; perEst: number; perAct: number }> = {}
-  for (const cat of allCats) catMap[cat] = { bizEst: 0, bizAct: 0, perEst: 0, perAct: 0 }
-  for (const l of lines) {
-    const c = catMap[l.category_label]
-    if (l.bill_type === 'business') { c.bizEst += l.estimated_amount; c.bizAct += l.actual_amount }
-    else                            { c.perEst += l.estimated_amount; c.perAct += l.actual_amount }
-  }
-
-  // Payments by account
-  const acctMap: Record<string, { count: number; total: number; autoPay: string[] }> = {}
-  for (const l of lines) {
-    const acct = l.payment_account ?? 'Other'
-    if (!acctMap[acct]) acctMap[acct] = { count: 0, total: 0, autoPay: [] }
-    acctMap[acct].count++
-    acctMap[acct].total += l.estimated_amount
-    if (l.auto_pay) acctMap[acct].autoPay.push(l.vendor_name)
-  }
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
 
@@ -356,276 +312,12 @@ function DashboardView({ lines }: { lines: ParsedLine[] }) {
         />
         <StatCard label="Personal Monthly Budget" value={formatCurrency(perBudget)} />
         <StatCard label="Personal Actual (MTD)"   value={perActual > 0 ? formatCurrency(perActual) : '—'} />
-        <StatCard label="Combined Budget"          value={formatCurrency(bizBudget + perBudget)} sub="Business + Personal" />
+        <StatCard label="Personal Variance"
+          value={perActual > 0 ? formatCurrency(perActual - perBudget) : '—'}
+          sub={perActual > 0 ? (perActual > perBudget ? 'Over budget' : 'Under budget') : 'No actuals yet'}
+        />
       </div>
 
-      {/* Spending by Category */}
-      <div>
-        <SectionLabel style={{ marginBottom: 14 }}>Spending by Category — Business vs. Personal</SectionLabel>
-        <TableWrap>
-          <thead>
-            <tr>
-              <TH>Category</TH>
-              <TH right>BIZ Budget</TH>
-              <TH right>BIZ Actual</TH>
-              <TH right>BIZ Variance</TH>
-              <TH right>Personal Budget</TH>
-              <TH right>Personal Actual</TH>
-              <TH right>Personal Variance</TH>
-              <TH right>Combined Total</TH>
-            </tr>
-          </thead>
-          <tbody>
-            {allCats.map(cat => {
-              const c = catMap[cat]
-              const bizVar = c.bizAct - c.bizEst
-              const perVar = c.perAct - c.perEst
-              return (
-                <tr key={cat} style={ROW_BORDER}>
-                  <TD bold>{cat}</TD>
-                  <TD right>{c.bizEst ? formatCurrency(c.bizEst) : EMPTY}</TD>
-                  <TD right>{c.bizAct ? formatCurrency(c.bizAct) : EMPTY}</TD>
-                  <TD right>
-                    {c.bizAct
-                      ? <span style={{ color: bizVar > 0 ? 'var(--c-red-500)' : 'var(--c-green-500)', fontWeight: 700 }}>
-                          {bizVar > 0 ? '+' : ''}{formatCurrency(bizVar)}
-                        </span>
-                      : EMPTY}
-                  </TD>
-                  <TD right>{c.perEst ? formatCurrency(c.perEst) : EMPTY}</TD>
-                  <TD right>{c.perAct ? formatCurrency(c.perAct) : EMPTY}</TD>
-                  <TD right>
-                    {c.perAct
-                      ? <span style={{ color: perVar > 0 ? 'var(--c-red-500)' : 'var(--c-green-500)', fontWeight: 700 }}>
-                          {perVar > 0 ? '+' : ''}{formatCurrency(perVar)}
-                        </span>
-                      : EMPTY}
-                  </TD>
-                  <TD right bold>{formatCurrency(c.bizEst + c.perEst)}</TD>
-                </tr>
-              )
-            })}
-          </tbody>
-          <tfoot>
-            <tr>
-              <TotalTD>Total</TotalTD>
-              <TotalTD right>{formatCurrency(bizBudget)}</TotalTD>
-              <TotalTD right>{bizActual > 0 ? formatCurrency(bizActual) : EMPTY}</TotalTD>
-              <TotalTD right>{bizActual > 0 ? formatCurrency(bizActual - bizBudget) : EMPTY}</TotalTD>
-              <TotalTD right>{formatCurrency(perBudget)}</TotalTD>
-              <TotalTD right>{perActual > 0 ? formatCurrency(perActual) : EMPTY}</TotalTD>
-              <TotalTD right>{perActual > 0 ? formatCurrency(perActual - perBudget) : EMPTY}</TotalTD>
-              <TotalTD right>{formatCurrency(bizBudget + perBudget)}</TotalTD>
-            </tr>
-          </tfoot>
-        </TableWrap>
-      </div>
-
-      {/* Payments by Account */}
-      <div>
-        <SectionLabel style={{ marginBottom: 14 }}>Payments by Account — Monthly Summary</SectionLabel>
-        <TableWrap>
-          <thead>
-            <tr>
-              <TH>Payment Account</TH>
-              <TH center># of Bills</TH>
-              <TH right>Total Budget</TH>
-              <TH>Auto-Pay Bills</TH>
-            </tr>
-          </thead>
-          <tbody>
-            {Object.entries(acctMap)
-              .sort((a, b) => b[1].total - a[1].total)
-              .map(([acct, data], i) => (
-                <tr key={acct} style={ROW_BORDER}>
-                  <TD bold>{acct}</TD>
-                  <TD center muted>{data.count}</TD>
-                  <TD right bold>{formatCurrency(data.total)}</TD>
-                  <TD muted>
-                    {data.autoPay.length > 0 ? data.autoPay.join(', ') : EMPTY}
-                  </TD>
-                </tr>
-              ))}
-          </tbody>
-        </TableWrap>
-      </div>
-    </div>
-  )
-}
-
-// ── Payment Calendar tab ──────────────────────────────────────────────────────
-
-const WEEK_LABELS: Record<number, string> = {
-  1: 'Week 1 — Days 1–7',
-  2: 'Week 2 — Days 8–14',
-  3: 'Week 3 — Days 15–21',
-  4: 'Week 4 — Days 22–31',
-}
-
-function CalendarView({ items }: { items: CalendarItem[] }) {
-  if (items.length === 0) {
-    return (
-      <Card padding="40px 24px" style={{ textAlign: 'center' }}>
-        <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--c-navy-950)', marginBottom: 6 }}>
-          No Payment Calendar data
-        </p>
-        <p style={{ fontSize: 13, color: 'var(--c-slate-400)' }}>
-          Re-upload the budget file to populate this tab from the Payment Calendar sheet.
-        </p>
-      </Card>
-    )
-  }
-
-  // Group by week, preserving file order within each week
-  const buckets: Record<number, CalendarItem[]> = {}
-  for (const item of items) {
-    const w = item.week
-    if (!buckets[w]) buckets[w] = []
-    buckets[w].push(item)
-  }
-  const activeWeeks = ([1, 2, 3, 4] as const).filter(w => (buckets[w] ?? []).length > 0)
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      {activeWeeks.map(w => {
-        const wItems = buckets[w]
-        const weekTotal = wItems.reduce((s, item) => s + item.amount, 0)
-        return (
-          <div key={w}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-              <SectionLabel>{WEEK_LABELS[w]}</SectionLabel>
-              <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--c-navy-950)' }}>
-                {formatCurrency(weekTotal)}
-              </span>
-            </div>
-            <TableWrap>
-              <thead>
-                <tr>
-                  <TH>Vendor / Description</TH>
-                  <TH>Category</TH>
-                  <TH right>Budget Amount</TH>
-                  <TH center>Due Day</TH>
-                  <TH>Account</TH>
-                  <TH center>Auto Pay</TH>
-                  <TH>Notes</TH>
-                </tr>
-              </thead>
-              <tbody>
-                {wItems.map((item, i) => (
-                  <tr key={i} style={ROW_BORDER}>
-                    <TD bold>{item.vendor}</TD>
-                    <TD muted>{item.category}</TD>
-                    <TD right bold>{formatCurrency(item.amount)}</TD>
-                    <TD center muted>{item.due_day}</TD>
-                    <TD muted>{item.account}</TD>
-                    <TD center>
-                      <Badge variant={item.auto_pay ? 'green' : 'neutral'}>
-                        {item.auto_pay ? 'Auto' : 'Manual'}
-                      </Badge>
-                    </TD>
-                    <TD muted>{item.notes}</TD>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <TotalTD colSpan={2}>Week Subtotal</TotalTD>
-                  <TotalTD right>{formatCurrency(weekTotal)}</TotalTD>
-                  <TotalTD colSpan={4} />
-                </tr>
-              </tfoot>
-            </TableWrap>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-// ── Forecast tab ──────────────────────────────────────────────────────────────
-
-function ForecastView({ items }: { items: ForecastItem[] }) {
-  if (items.length === 0) {
-    return (
-      <Card padding="40px 24px" style={{ textAlign: 'center' }}>
-        <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--c-navy-950)', marginBottom: 6 }}>
-          No Forecast data
-        </p>
-        <p style={{ fontSize: 13, color: 'var(--c-slate-400)' }}>
-          Re-upload the budget file to populate this tab from the Forecast sheet.
-        </p>
-      </Card>
-    )
-  }
-
-  const totalM1Budget    = items.reduce((s, i) => s + i.m1_budget,    0)
-  const totalM1Projected = items.reduce((s, i) => s + i.m1_projected, 0)
-  const totalM2Budget    = items.reduce((s, i) => s + i.m2_budget,    0)
-  const totalM2Projected = items.reduce((s, i) => s + i.m2_projected, 0)
-  const totalM3Budget    = items.reduce((s, i) => s + i.m3_budget,    0)
-  const totalM3Projected = items.reduce((s, i) => s + i.m3_projected, 0)
-
-  const hasProjected = items.some(i => i.m1_projected > 0 || i.m2_projected > 0 || i.m3_projected > 0)
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
-        <StatCard label="Month 1 — Budget"    value={formatCurrency(totalM1Budget)}    />
-        <StatCard label="Month 2 — Budget"    value={formatCurrency(totalM2Budget)}    />
-        <StatCard label="Month 3 — Budget"    value={formatCurrency(totalM3Budget)}    />
-      </div>
-
-      <TableWrap>
-        <thead>
-          <tr>
-            <TH rowSpan={2}>#</TH>
-            <TH rowSpan={2}>Vendor / Description</TH>
-            <TH rowSpan={2}>Category</TH>
-            <TH colSpan={hasProjected ? 2 : 1} center>Month 1 (Current)</TH>
-            <TH colSpan={hasProjected ? 2 : 1} center>Month 2</TH>
-            <TH colSpan={hasProjected ? 2 : 1} center>Month 3</TH>
-            <TH rowSpan={2} center>Freq.</TH>
-            <TH rowSpan={2}>Notes</TH>
-          </tr>
-          <tr>
-            <TH right>Budget ($)</TH>
-            {hasProjected && <TH right>Projected ($)</TH>}
-            <TH right>Budget ($)</TH>
-            {hasProjected && <TH right>Projected ($)</TH>}
-            <TH right>Budget ($)</TH>
-            {hasProjected && <TH right>Projected ($)</TH>}
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item, i) => (
-            <tr key={i} style={ROW_BORDER}>
-              <TD center muted>{i + 1}</TD>
-              <TD bold>{item.vendor}</TD>
-              <TD muted>{item.category}</TD>
-              <TD right bold>{formatCurrency(item.m1_budget)}</TD>
-              {hasProjected && <TD right muted>{item.m1_projected > 0 ? formatCurrency(item.m1_projected) : EMPTY}</TD>}
-              <TD right bold>{formatCurrency(item.m2_budget)}</TD>
-              {hasProjected && <TD right muted>{item.m2_projected > 0 ? formatCurrency(item.m2_projected) : EMPTY}</TD>}
-              <TD right bold>{formatCurrency(item.m3_budget)}</TD>
-              {hasProjected && <TD right muted>{item.m3_projected > 0 ? formatCurrency(item.m3_projected) : EMPTY}</TD>}
-              <TD center muted>{item.frequency}</TD>
-              <TD muted>{item.notes}</TD>
-            </tr>
-          ))}
-        </tbody>
-        <tfoot>
-          <tr>
-            <TotalTD colSpan={3}>Monthly Total</TotalTD>
-            <TotalTD right>{formatCurrency(totalM1Budget)}</TotalTD>
-            {hasProjected && <TotalTD right>{totalM1Projected > 0 ? formatCurrency(totalM1Projected) : EMPTY}</TotalTD>}
-            <TotalTD right>{formatCurrency(totalM2Budget)}</TotalTD>
-            {hasProjected && <TotalTD right>{totalM2Projected > 0 ? formatCurrency(totalM2Projected) : EMPTY}</TotalTD>}
-            <TotalTD right>{formatCurrency(totalM3Budget)}</TotalTD>
-            {hasProjected && <TotalTD right>{totalM3Projected > 0 ? formatCurrency(totalM3Projected) : EMPTY}</TotalTD>}
-            <TotalTD colSpan={2} />
-          </tr>
-        </tfoot>
-      </TableWrap>
     </div>
   )
 }
@@ -633,11 +325,9 @@ function ForecastView({ items }: { items: ForecastItem[] }) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 const TABS: { id: Tab; label: string; Icon: any }[] = [
-  { id: 'overview',  label: 'Dashboard',        Icon: LayoutDashboard },
-  { id: 'business',  label: 'Business Budget',  Icon: Building2       },
-  { id: 'personal',  label: 'Personal Budget',  Icon: User            },
-  { id: 'calendar',  label: 'Payment Calendar', Icon: CalendarDays    },
-  { id: 'forecast',  label: '3-Month Forecast', Icon: TrendingUp      },
+  { id: 'overview',  label: 'Dashboard',       Icon: LayoutDashboard },
+  { id: 'business',  label: 'Business Budget', Icon: Building2       },
+  { id: 'personal',  label: 'Personal Budget', Icon: User            },
 ]
 
 export default function BudgetBreakdown({ lines, budget, month }: Props) {
@@ -645,17 +335,6 @@ export default function BudgetBreakdown({ lines, budget, month }: Props) {
   const parsed   = lines.map(parseLine)
   const bizLines = parsed.filter(l => l.bill_type === 'business')
   const perLines = parsed.filter(l => l.bill_type === 'personal')
-
-  // Parse calendar and forecast data stored in budget.notes JSON
-  let calendarItems: CalendarItem[] = []
-  let forecastItems: ForecastItem[] = []
-  if (budget.notes?.startsWith('{')) {
-    try {
-      const meta = JSON.parse(budget.notes)
-      calendarItems = Array.isArray(meta.calendarItems) ? meta.calendarItems : []
-      forecastItems = Array.isArray(meta.forecastItems) ? meta.forecastItems : []
-    } catch {}
-  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -707,9 +386,6 @@ export default function BudgetBreakdown({ lines, budget, month }: Props) {
             </Card>
           : <BudgetTable lines={perLines} />
       )}
-
-      {activeTab === 'calendar' && <CalendarView items={calendarItems} />}
-      {activeTab === 'forecast' && <ForecastView items={forecastItems} />}
 
     </div>
   )

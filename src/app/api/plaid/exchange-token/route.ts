@@ -8,6 +8,7 @@ const schema = z.object({
   institution_name: z.string().nullable().optional(),
   institution_id: z.string().nullable().optional(),
   link_session_id: z.string().optional(),
+  account_type: z.enum(['personal', 'business']).optional(),
 })
 
 export async function POST(request: Request) {
@@ -47,6 +48,7 @@ export async function POST(request: Request) {
     item_id,
     institution_name: body.data.institution_name ?? null,
     institution_id: body.data.institution_id ?? null,
+    account_type: body.data.account_type ?? 'personal',
   }])
 
   return NextResponse.json({ success: true, duplicate: false })
