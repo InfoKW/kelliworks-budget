@@ -16,8 +16,7 @@ export default async function ClientTransactionsPage({ params }: PageProps) {
   const { data: profile, error: profileError } = await supabase.database
     .from('profiles').select('full_name, email').eq('id', id).single()
 
-  // Only 404 if the client genuinely doesn't exist — not on auth/network errors
-  if (!profile && !profileError) notFound()
+  if (!profile) notFound()
 
   // Fetch all transactions for this client (no month filter — all time)
   const { data: transactions } = await supabase.database
